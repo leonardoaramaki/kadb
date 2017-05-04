@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/peek.iml" filepath="$PROJECT_DIR$/.idea/modules/peek.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/peek_main.iml" filepath="$PROJECT_DIR$/.idea/modules/peek_main.iml" group="peek" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/peek_test.iml" filepath="$PROJECT_DIR$/.idea/modules/peek_test.iml" group="peek" />
+    </modules>
+  </component>
+</project>
