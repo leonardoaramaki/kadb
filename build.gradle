@@ -19,6 +19,14 @@ repositories {
     mavenCentral()
 }
 
+sourceSets {
+    test {
+        java {
+            srcDirs += "test"
+        }
+    }
+}
+
 jar {
     manifest {
         attributes 'Main-Class': 'peek.MainKt'
@@ -31,4 +39,6 @@ mainClassName = "peek.MainKt"
 
 dependencies {
     compile "org.jetbrains.kotlin:kotlin-stdlib-jre8:$kotlin_version"
+    testCompile 'junit:junit:4.12'
+    testCompile "org.jetbrains.kotlin:kotlin-test-junit:$kotlin_version"
 }
