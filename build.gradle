@@ -20,6 +20,11 @@ repositories {
 }
 
 sourceSets {
+    main {
+        java {
+            srcDirs += "kotlin"
+        }
+    }
     test {
         java {
             srcDirs += "test"

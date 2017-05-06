@@ -9,5 +9,5 @@ fun String.prefix(): String {
 }
 
 fun String.payload(): String {
-    return if (this.hasPayload()) this.substring(8, this.length) else this
+    return if (this.hasPayload()) this.substring(4, this.length) else this
 }
