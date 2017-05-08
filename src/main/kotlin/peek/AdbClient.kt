@@ -1,6 +1,9 @@
 package peek
 
-import java.io.*
+import java.io.BufferedReader
+import java.io.IOException
+import java.io.InputStreamReader
+import java.io.PrintStream
 import java.net.Socket
 import java.nio.file.Files
 import java.nio.file.Paths
@@ -68,25 +71,31 @@ class AdbClient(settings: Settings) {
         }
 
         try {
+            var fileNotFound = false
             for (cmd in commands) {
                 var output: String = ""
                 if (fileSyncMode) {
-                    //TODO: Remove length prefixing for sync subcommands
-                    writer?.print(cmd.payload())
+                    if (fileNotFound) {
+                        stdOut("adb: error: remote object '$syncRemoteFilePath' does not exist")
+                        break
+                    }
+                    client.getOutputStream().write(cmd.payload().toByteArray())
                 } else {
-                    writer?.print(cmd)
+                    client.getOutputStream().write(cmd.toByteArray())
                 }
-                writer?.flush()
+                client.getOutputStream().flush()
                 log("-> ${if (config.verbose) if (fileSyncMode) cmd.payload() else cmd else cmd.payload()}")
                 if (fileSyncMode) {
                     when (getCommandId(cmd.payload())) {
                         "STAT" -> {
-                            val syncData = CharArray(16)
-                            var bytesRead: Int = reader?.read(syncData) ?: 0
-                            while (bytesRead < 16) {
-                                bytesRead += reader?.read(syncData) ?: 0
-                            }
-                            log("<- ${String(syncData)}")
+                            val chunkSize = ByteArray(WORD_SIZE)
+                            client.inputStream.read(chunkSize, 0, 4)
+                            val available = client.inputStream.available()
+                            val ZEROES = ByteArray(available)
+                            val BUFFER = ByteArray(available)
+                            client.inputStream.read(BUFFER, 0, available)
+                            // adb server returns all zeroes for STAT if file not found remotely
+                            fileNotFound = String(BUFFER) == String(ZEROES)
                         }
                         "RECV" -> {
                             val path = Paths.get(syncLocalFilePath)
@@ -133,7 +142,6 @@ class AdbClient(settings: Settings) {
                                 if (keepPulling) {
                                     totalFileBytesRead += chunkBytesRead
                                     Files.write(path, chunkData, StandardOpenOption.APPEND)
-                                    stdOut("Read $chunkBytesRead out of $chunkBytesLength")
                                 }
                             }
 
@@ -251,9 +259,7 @@ class AdbClient(settings: Settings) {
     }
 
     private fun stdOut(message: Any?) {
-        if (config.verbose) {
-            println(message)
-        }
+        println(message)
     }
 
     private fun log(message: Any?) {
