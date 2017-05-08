@@ -1,12 +1,8 @@
 package peek
 
-import java.io.BufferedReader
-import java.io.IOException
-import java.io.InputStreamReader
-import java.io.PrintStream
+import java.io.*
 import java.net.Socket
 import java.nio.file.Files
-import java.nio.file.Path
 import java.nio.file.Paths
 import java.nio.file.StandardOpenOption
 import javax.xml.bind.DatatypeConverter
@@ -18,17 +14,17 @@ class AdbClient(settings: Settings) {
         const val ADB_PORT = 5037 // adb default port
         const val OKAY = "OKAY" // default response id when a service request succeeded
         const val FAIL = "FAIL" // default response id when a service request has failed
-        const val WORD_SIZE = 4
+        const val WORD_SIZE = 4 // 4 bytes - size of response ids and req/res length
     }
 
-    internal val config: Settings
+    private val config: Settings
     private var serial: String? = null
-    private var connected: Boolean = false
     private var fileSyncMode: Boolean = false
     private var writer: PrintStream? = null
     private var reader: BufferedReader? = null
-    private var deviceList: MutableList<String> = mutableListOf()
-    private var syncLocalPath: String = ""
+    private var devicesFound: MutableList<String> = mutableListOf()
+    private var syncLocalFilePath: String = ""
+    private var syncRemoteFilePath: String = ""
 
     init {
         this.config = settings
@@ -57,8 +53,8 @@ class AdbClient(settings: Settings) {
 
     private fun send(payload: String, multiple: Boolean = false, silent: Boolean = false) {
         val client = Socket(ADB_HOST, ADB_PORT)
-        writer = PrintStream(client.getOutputStream())
-        reader = BufferedReader(InputStreamReader(client.getInputStream()))
+        writer = PrintStream(client.outputStream)
+        reader = BufferedReader(InputStreamReader(client.inputStream))
 
         var commands: List<String>
         if (multiple) {
@@ -93,43 +89,55 @@ class AdbClient(settings: Settings) {
                             log("<- ${String(syncData)}")
                         }
                         "RECV" -> {
-                            var responseId = ByteArray(WORD_SIZE)
+                            val path = Paths.get(syncLocalFilePath)
+                            val responseId = ByteArray(WORD_SIZE)
                             client.getInputStream().read(responseId, 0, 4)
                             log("<- ${String(responseId)}")
 
-                            responseId = ByteArray(WORD_SIZE)
-                            client.getInputStream().read(responseId, 0, 4)
+                            var chunkSize = ByteArray(WORD_SIZE)
+                            client.inputStream.read(chunkSize, 0, 4)
 
-                            var length = ""
-                            String(responseId).forEach {
-                                val elem = it.toShort()
-                                var tmp = elem.toInt()
-                                if (elem < 0) {
-                                    tmp = 131 - elem
-                                }
-                                val hex = tmp.toString(16)
-                                if (length.length < 4) {
-                                    length += hex
-                                }
-                            }
+                            var chunkBytesLength = littleToBigEndian(unsignWord(chunkSize))
+                            var chunkData = ByteArray(chunkBytesLength)
+                            var chunkBytesRead = client.inputStream.read(chunkData, 0, chunkBytesLength)
+                            stdOut("Read $chunkBytesRead out of $chunkBytesLength")
+                            var totalFileBytesRead = chunkBytesRead
 
-                            // Convert from little-endian to big-endian by shifting 24 bytes to the right
-                            val fileLength = littleEndianToBigEndian(length.toInt(16))
-                            val syncData = ByteArray(fileLength)
-                            var maxSizePerRead = if (fileLength > CHUNK_MAX_SIZE_PER_SYNC) CHUNK_MAX_SIZE_PER_SYNC else fileLength
-                            var bytesRead: Int = client.getInputStream().read(syncData, 0, maxSizePerRead)
-                            log("Read $bytesRead out of $fileLength")
-                            while (bytesRead < fileLength) {
-                                val remainingBytes = fileLength - bytesRead
-                                maxSizePerRead = if (remainingBytes < maxSizePerRead) remainingBytes else maxSizePerRead
-                                bytesRead += client.getInputStream().read(syncData, bytesRead, maxSizePerRead)
-                                if (bytesRead < 0)
+                            Files.write(path, chunkData, StandardOpenOption.TRUNCATE_EXISTING,
+                                    StandardOpenOption.CREATE, StandardOpenOption.WRITE)
+
+                            var counter = 0
+                            while (true) {
+                                //region check if 4 hex is 'DATA'
+                                if (client.inputStream.available() < 4) {
                                     break
-                                log("Read $bytesRead out of $fileLength")
+                                }
+                                client.inputStream.read(chunkSize, 0, 4)
+                                val hex = String(chunkSize)
+                                if ("DATA" == hex) {
+                                    println(hex)
+                                    // read another 4 hex to get the next chunk length
+                                    client.inputStream.read(chunkSize, 0, 4)
+                                    chunkBytesLength = littleToBigEndian(unsignWord(chunkSize))
+                                    chunkData = ByteArray(chunkBytesLength)
+                                    chunkBytesRead = client.inputStream.read(chunkData, 0, chunkBytesLength)
+                                } else if ("DONE" == hex) {
+                                    break
+                                } else {
+                                    chunkData = ByteArray(chunkBytesLength - 4)
+                                    chunkBytesRead = client.inputStream.read(chunkData, 0, chunkBytesLength - 4)
+                                    Files.write(path, chunkSize, StandardOpenOption.APPEND)
+                                }
+                                //endregion
+
+                                totalFileBytesRead += chunkBytesRead
+                                Files.write(path, chunkData, StandardOpenOption.APPEND)
+                                stdOut("Read $chunkBytesRead out of $chunkBytesLength")
+                                stdOut("$syncRemoteFilePath: 1 file pulled. ($totalFileBytesRead bytes)")
                             }
-                            val path = Paths.get(syncLocalPath)
-                            Files.write(path, syncData, StandardOpenOption.TRUNCATE_EXISTING,
-                                StandardOpenOption.CREATE)
+
+                            stdOut("$syncRemoteFilePath: 1 file pulled. ($totalFileBytesRead bytes)")
+
                         }
                     }
                 } else {
@@ -138,36 +146,24 @@ class AdbClient(settings: Settings) {
                         OKAY -> {
                             when {
                                 cmd.payload() == ("$TRANSPORT_SERVICE$serial") -> {
-                                    println("Connected with $serial...")
-                                    connected = true
+                                    println("Transport established with $serial.")
                                 }
                                 cmd.payload() == DEVICES_SERVICE -> {
                                     val len = readWord().toInt(16)
                                     var deviceLine = reader?.readLine()
                                     while (deviceLine != null) {
-                                        deviceList.add(deviceLine)
+                                        devicesFound.add(deviceLine)
                                         output += "$deviceLine\n"
                                         deviceLine = reader?.readLine()
                                     }
                                 }
-                                cmd.payload() == SYNC_SERVICE -> {
-                                    fileSyncMode = true
-                                }
-                                connected -> {
+                                cmd.payload() == VERSION_SERVICE -> log("<- ${reader?.readLine()}")
+                                cmd.payload() == SYNC_SERVICE -> fileSyncMode = true
+                                cmd.payload().startsWith(SHELL_SERVICE) -> {
                                     var line = reader?.readLine()
                                     while (line != null) {
-                                        output += line + "\n"
+                                        output += "$line\n"
                                         line = reader?.readLine()
-                                    }
-                                }
-                                else -> {
-                                    val len = readWord().toInt(16)
-                                    if (config.debuggable) {
-                                        var outputLine = reader?.readLine()
-                                        while (outputLine != null) {
-                                            output += "$outputLine\n"
-                                            outputLine = reader?.readLine()
-                                        }
                                     }
                                 }
                             }
@@ -179,18 +175,34 @@ class AdbClient(settings: Settings) {
                     }
                     log("<- $ack")
                 }
-                if (!silent) println(output)
+                if (!silent && output.isNotEmpty()) println(output)
             }
         } catch (e: IOException) {
             e.printStackTrace()
         } finally {
             log("Closing connection...")
-            connected = false
+            devicesFound.clear()
             fileSyncMode = false
             writer?.close()
             reader?.close()
             client.close()
         }
+    }
+
+    private fun unsignWord(dataSize: ByteArray): Int {
+        var length = ""
+        String(dataSize).forEach {
+            val elem = it.toShort()
+            var tmp = elem
+            if (elem < 0) {
+                tmp = elem
+            }
+            val hex = it.toInt().toString(16)
+            if (length.length < 4) {
+                length += hex
+            }
+        }
+        return length.toInt(16)
     }
 
     @Throws(IOException::class)
@@ -222,7 +234,8 @@ class AdbClient(settings: Settings) {
         return fourByteHexStringToAscii(integerToFourByteHexString(len))
     }
 
-    private fun littleEndianToBigEndian(littleEndian: Int): Int {
+    // Change byte order from little-endian to big-endian for 16 bit ints
+    private fun littleToBigEndian(littleEndian: Int): Int {
         var bigEndian: Int = (littleEndian and 0xff_00) shr 8
         bigEndian = bigEndian or (littleEndian and 0x00_ff shl 8)
         return bigEndian
@@ -232,22 +245,33 @@ class AdbClient(settings: Settings) {
         return payload.length.toString(16).padStart(4, '0') + payload
     }
 
+    private fun switchToDevice(deviceSerial: String?) {
+        send(DEVICES_SERVICE, silent = true)
+        serial = deviceSerial ?: if (devicesFound.size > 0) devicesFound[0].split(Regex("\\s"))[0] else config.serial
+    }
+
+    private fun stdOut(message: Any?) {
+        if (config.verbose) {
+            println(message)
+        }
+    }
+
     private fun log(message: Any?) {
         if (config.debuggable) {
             println(message)
         }
     }
 
-    fun pull(remotePath: String, localPath: String? = null, deviceSerial: String? = null) {
-        syncLocalPath = localPath ?: Paths.get(remotePath).fileName.toString()
-        send(DEVICES_SERVICE, silent = true)
-        serial = deviceSerial ?: if (deviceList.size > 0) deviceList[0].split(Regex("\\s"))[0] else config.serial
+    fun pull(remoteFilePath: String, localFilePath: String? = null, deviceSerial: String? = null) {
+        syncRemoteFilePath = remoteFilePath
+        syncLocalFilePath = localFilePath ?: Paths.get(remoteFilePath).fileName.toString()
+        switchToDevice(deviceSerial)
         batchAndRun(
                 VERSION_SERVICE,
                 "$TRANSPORT_SERVICE$serial",
                 SYNC_SERVICE,
-                "STAT${encodedLengthForSync(remotePath.length)}$remotePath",
-                "RECV${encodedLengthForSync(remotePath.length)}$remotePath"
+                "STAT${encodedLengthForSync(remoteFilePath.length)}$remoteFilePath",
+                "RECV${encodedLengthForSync(remoteFilePath.length)}$remoteFilePath"
         )
     }
 
@@ -256,42 +280,11 @@ class AdbClient(settings: Settings) {
     }
 
     fun shell(cmd: String, deviceSerial: String? = null) {
-        send(DEVICES_SERVICE, silent = true)
-        serial = deviceSerial ?: if (deviceList.size > 0) deviceList[0].split(Regex("\\s"))[0] else config.serial
+        switchToDevice(deviceSerial)
         batchAndRun(
                 VERSION_SERVICE,
                 "$TRANSPORT_SERVICE$serial",
                 "$SHELL_SERVICE$cmd"
         )
-        deviceList.clear()
     }
-}
-
-class Settings {
-    inline val Set: Settings
-        get() = this
-    internal var debuggable: Boolean = true
-    internal var verbose: Boolean = false
-    internal var serial: String? = null
-
-    infix fun device(serial: String): Settings {
-        this.serial = serial
-        return this
-    }
-
-    infix fun loggingTo(log: Boolean): Settings {
-        this.debuggable = log
-        return this
-    }
-
-    infix fun verboseTo(verbose: Boolean): Settings {
-        this.verbose = verbose
-        return this
-    }
-}
-
-fun settings(init: Settings.() -> Unit): Settings {
-    val cfg = Settings()
-    cfg.init()
-    return cfg
 }
