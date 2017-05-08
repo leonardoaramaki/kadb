@@ -91,10 +91,10 @@ class AdbClient(settings: Settings) {
                         "RECV" -> {
                             val path = Paths.get(syncLocalFilePath)
                             val responseId = ByteArray(WORD_SIZE)
-                            client.getInputStream().read(responseId, 0, 4)
+                            client.inputStream.read(responseId, 0, 4)
                             log("<- ${String(responseId)}")
 
-                            var chunkSize = ByteArray(WORD_SIZE)
+                            val chunkSize = ByteArray(WORD_SIZE)
                             client.inputStream.read(chunkSize, 0, 4)
 
                             var chunkBytesLength = littleToBigEndian(unsignWord(chunkSize))
@@ -104,40 +104,40 @@ class AdbClient(settings: Settings) {
                             var totalFileBytesRead = chunkBytesRead
 
                             Files.write(path, chunkData, StandardOpenOption.TRUNCATE_EXISTING,
-                                    StandardOpenOption.CREATE, StandardOpenOption.WRITE)
+                                    StandardOpenOption.CREATE)
 
-                            var counter = 0
-                            while (true) {
+                            var keepPulling = true
+                            while (keepPulling) {
                                 //region check if 4 hex is 'DATA'
                                 if (client.inputStream.available() < 4) {
-                                    break
+                                    keepPulling = false
                                 }
                                 client.inputStream.read(chunkSize, 0, 4)
                                 val hex = String(chunkSize)
-                                if ("DATA" == hex) {
-                                    println(hex)
-                                    // read another 4 hex to get the next chunk length
-                                    client.inputStream.read(chunkSize, 0, 4)
-                                    chunkBytesLength = littleToBigEndian(unsignWord(chunkSize))
-                                    chunkData = ByteArray(chunkBytesLength)
-                                    chunkBytesRead = client.inputStream.read(chunkData, 0, chunkBytesLength)
-                                } else if ("DONE" == hex) {
-                                    break
-                                } else {
-                                    chunkData = ByteArray(chunkBytesLength - 4)
-                                    chunkBytesRead = client.inputStream.read(chunkData, 0, chunkBytesLength - 4)
-                                    Files.write(path, chunkSize, StandardOpenOption.APPEND)
+                                when (hex) {
+                                    "DATA" -> {
+                                        // read another 4 hex to get the next chunk length
+                                        client.inputStream.read(chunkSize, 0, 4)
+                                        chunkBytesLength = littleToBigEndian(unsignWord(chunkSize))
+                                        chunkData = ByteArray(chunkBytesLength)
+                                        chunkBytesRead = client.inputStream.read(chunkData, 0, chunkBytesLength)
+                                    }
+                                    "DONE" -> keepPulling = false
+                                    else -> {
+                                        chunkData = ByteArray(chunkBytesLength - 4)
+                                        chunkBytesRead = client.inputStream.read(chunkData, 0, chunkBytesLength - 4)
+                                        Files.write(path, chunkSize, StandardOpenOption.APPEND)
+                                    }
                                 }
                                 //endregion
-
-                                totalFileBytesRead += chunkBytesRead
-                                Files.write(path, chunkData, StandardOpenOption.APPEND)
-                                stdOut("Read $chunkBytesRead out of $chunkBytesLength")
-                                stdOut("$syncRemoteFilePath: 1 file pulled. ($totalFileBytesRead bytes)")
+                                if (keepPulling) {
+                                    totalFileBytesRead += chunkBytesRead
+                                    Files.write(path, chunkData, StandardOpenOption.APPEND)
+                                    stdOut("Read $chunkBytesRead out of $chunkBytesLength")
+                                }
                             }
 
                             stdOut("$syncRemoteFilePath: 1 file pulled. ($totalFileBytesRead bytes)")
-
                         }
                     }
                 } else {
