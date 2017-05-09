@@ -10,7 +10,15 @@ import java.nio.file.Paths
 import java.nio.file.StandardOpenOption
 import javax.xml.bind.DatatypeConverter
 
-class AdbClient(settings: Settings) {
+class AdbClient(private var config: Settings = settings { Set loggingTo false verboseTo false },
+                private var serial: String? = config.serial,
+                private var fileSyncMode: Boolean = false,
+                private var writer: PrintStream? = null,
+                private var reader: BufferedReader? = null,
+                private var devicesFound: MutableList<String> = mutableListOf(),
+                private var syncLocalFilePath: String = "",
+                private var syncRemoteFilePath: String = "") {
+
     companion object {
         const val CHUNK_MAX_SIZE_PER_SYNC = 65535 // 64K - max chunk size in bytes transferred on a sync message payload
         const val ADB_HOST = "localhost" // adb server running on host machine
@@ -18,20 +26,6 @@ class AdbClient(settings: Settings) {
         const val OKAY = "OKAY" // default response id when a service request succeeded
         const val FAIL = "FAIL" // default response id when a service request has failed
         const val WORD_SIZE = 4 // 4 bytes - size of response ids and req/res length
-    }
-
-    private val config: Settings
-    private var serial: String? = null
-    private var fileSyncMode: Boolean = false
-    private var writer: PrintStream? = null
-    private var reader: BufferedReader? = null
-    private var devicesFound: MutableList<String> = mutableListOf()
-    private var syncLocalFilePath: String = ""
-    private var syncRemoteFilePath: String = ""
-
-    init {
-        this.config = settings
-        this.serial = this.config.serial
     }
 
     fun batchAndRun(vararg commands: String) {
@@ -263,7 +257,7 @@ class AdbClient(settings: Settings) {
     }
 
     private fun log(message: Any?) {
-        if (config.debuggable) {
+        if (config.logging) {
             println(message)
         }
     }
@@ -282,6 +276,7 @@ class AdbClient(settings: Settings) {
     }
 
     fun devices() {
+        stdOut("List of devices attached")
         send(DEVICES_SERVICE)
     }
 

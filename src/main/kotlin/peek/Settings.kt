@@ -3,7 +3,7 @@ package peek
 class Settings {
     inline val Set: Settings
         get() = this
-    internal var debuggable: Boolean = true
+    internal var logging: Boolean = true
     internal var verbose: Boolean = false
     internal var serial: String? = null
 
@@ -13,7 +13,7 @@ class Settings {
     }
 
     infix fun loggingTo(log: Boolean): Settings {
-        this.debuggable = log
+        this.logging = log
         return this
     }
 
