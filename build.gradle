@@ -19,6 +19,8 @@ repositories {
     mavenCentral()
 }
 
+mainClassName = 'peek.MainKt'
+
 sourceSets {
     main {
         java {
@@ -31,6 +33,24 @@ sourceSets {
         }
     }
 }
+
+compileKotlin {
+    kotlinOptions {
+        includeRuntime = true
+    }
+}
+
+task fatJar(type: Jar, dependsOn: compileKotlin) {
+    manifest {
+        attributes 'Implementation-Title': 'Gradle Jar File Example',
+                'Implementation-Version': version,
+                'Main-Class': 'peek.MainKt'
+    }
+    baseName = project.name + '-all'
+    from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
+    with jar
+}
+
 
 jar {
     manifest {
