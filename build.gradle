@@ -1,4 +1,4 @@
-group 'com.github.leoaramaki'
+group 'com.github.leonardoaramaki'
 version '0.1.0'
 
 buildscript {
@@ -51,13 +51,12 @@ task fatJar(type: Jar, dependsOn: compileKotlin) {
     with jar
 }
 
-
-jar {
-    manifest {
-        attributes 'Main-Class': 'peek.MainKt'
-    }
-
-    from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
+task launch(type: Exec, dependsOn: fatJar) {
+    errorOutput = new ByteArrayOutputStream()
+    ignoreExitValue = true
+    workingDir "$buildDir/libs/"
+    def parameters = project.hasProperty("params") ? params : ""
+    commandLine "java", "-jar", "${project.name}-all-${version}.jar", parameters
 }
 
 mainClassName = "peek.MainKt"
