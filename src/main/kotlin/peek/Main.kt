@@ -1,40 +1,55 @@
 package peek
 
-import org.apache.commons.cli.DefaultParser
-import org.apache.commons.cli.HelpFormatter
-import org.apache.commons.cli.OptionBuilder
-import org.apache.commons.cli.Options
+import org.apache.commons.cli.*
 
 fun main(args: Array<String>) {
     val options = Options()
 
     options.addOption("d", "devices", false, "list connected devices")
-    OptionBuilder.hasArgs(2)
-    OptionBuilder.withArgName("<REMOTE> <LOCAL>")
-    OptionBuilder.withDescription("copy files/dirs from device")
-    val pullOpt = OptionBuilder.create("pull")
-    options.addOption(pullOpt)
 
-    OptionBuilder.hasArgs(1)
-    OptionBuilder.withArgName("<COMMAND>")
-    OptionBuilder.withDescription("run remote shell command")
-    val shellOpt = OptionBuilder.create("shell")
-    options.addOption(shellOpt)
-    val parser = DefaultParser()
-    val cmd = parser.parse(options, args)
+    options.addOption(Option.builder("s")
+            .hasArg()
+            .argName("SERIAL")
+            .desc("use device with given serial number")
+            .build())
 
-    val adbCli = AdbClient()
+    options.addOption(Option.builder("p")
+            .longOpt("pull")
+            .numberOfArgs(2)
+            .argName("REMOTE")
+            .argName("LOCAL")
+            .desc("copy files/firs from device")
+            .hasArgs()
+            .build())
+
+    options.addOption(Option.builder("sh")
+            .longOpt("shell")
+            .argName("COMMAND")
+            .desc("run remote shell command")
+            .hasArg()
+            .build())
+
+    val cmd = DefaultParser().parse(options, args)
+
+    val serial = if (cmd.hasOption("s") && cmd.getOptionValues("s").isNotEmpty()) cmd.getOptionValues("s")[0] else ""
+
+
+    val settings = settings {
+        Set device serial verboseTo false loggingTo false
+    }
+
+    val adbCli = AdbClient(settings)
+
     when {
         cmd.hasOption("d") || cmd.hasOption("devices") -> adbCli.devices()
-        cmd.hasOption("pull") -> println("AAAAAAAA")
-        cmd.hasOption("shell    ") -> println("AAAAAAAA")
+        cmd.hasOption("p") || cmd.hasOption("pull") -> {
+            if (cmd.getOptionValues("p").size > 1) {
+                adbCli.pull(cmd.getOptionValues("p")[0], cmd.getOptionValues("p")[1])
+            } else {
+                adbCli.pull(cmd.getOptionValues("p")[0])
+            }
+        }
+        (cmd.hasOption("sh") || cmd.hasOption("shell") && cmd.getOptionValues("sh").isNotEmpty()) -> adbCli.shell(cmd.getOptionValues("sh")[0])
         else -> HelpFormatter().printHelp("adb", options)
     }
-//    val adbCli = AdbClient(settings {
-//        Set device "emulator-5554" loggingTo false verboseTo true
-//    })
-////    adbCli.shell("run-as org.bitbucket.leoaramaki.onyo sh -c 'ls -la'")
-////    adbCli.pull("/sdcard/ic_avatar.png")
-//    adbCli.pull("/sdcard/arquivo.txt")
-//    adbCli.pull("/sdcard/dsds.png")
 }

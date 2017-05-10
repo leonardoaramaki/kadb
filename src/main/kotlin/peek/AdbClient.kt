@@ -225,7 +225,7 @@ class AdbClient(private var config: Settings = settings { Set loggingTo false ve
     }
 
     private fun integerToFourByteHexString(value: Int): String {
-        return value.toString(16).padEnd(8, '0')
+        return value.toString(16).padStart(2, '0').padEnd(8, '0')
     }
 
     private fun fourByteHexStringToAscii(fourByteHexStr: String): String {

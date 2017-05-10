@@ -3,7 +3,7 @@ package peek
 class Settings {
     inline val Set: Settings
         get() = this
-    internal var logging: Boolean = true
+    internal var logging: Boolean = false
     internal var verbose: Boolean = false
     internal var serial: String? = null
 
