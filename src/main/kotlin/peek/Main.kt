@@ -33,7 +33,6 @@ fun main(args: Array<String>) {
 
     val serial = if (cmd.hasOption("s") && cmd.getOptionValues("s").isNotEmpty()) cmd.getOptionValues("s")[0] else ""
 
-
     val settings = settings {
         Set device serial verboseTo false loggingTo false
     }
@@ -42,14 +41,37 @@ fun main(args: Array<String>) {
 
     when {
         cmd.hasOption("d") || cmd.hasOption("devices") -> adbCli.devices()
-        cmd.hasOption("p") || cmd.hasOption("pull") -> {
+        cmd.hasOption("p") -> {
+            if (noDeviceSet(settings)) {
+                println("No device set")
+                return
+            }
             if (cmd.getOptionValues("p").size > 1) {
                 adbCli.pull(cmd.getOptionValues("p")[0], cmd.getOptionValues("p")[1])
             } else {
                 adbCli.pull(cmd.getOptionValues("p")[0])
             }
         }
-        (cmd.hasOption("sh") || cmd.hasOption("shell") && cmd.getOptionValues("sh").isNotEmpty()) -> adbCli.shell(cmd.getOptionValues("sh")[0])
+        cmd.hasOption("pull") -> {
+            if (noDeviceSet(settings)) {
+                println("No device set")
+                return
+            }
+            if (cmd.getOptionValues("pull").size > 1) {
+                adbCli.pull(cmd.getOptionValues("pull")[0], cmd.getOptionValues("pull")[1])
+            } else {
+                adbCli.pull(cmd.getOptionValues("pull")[0])
+            }
+        }
+        (cmd.hasOption("sh") || cmd.hasOption("shell") && cmd.getOptionValues("sh").isNotEmpty()) -> {
+            if (noDeviceSet(settings)) {
+                println("No device set")
+                return
+            }
+            adbCli.shell(cmd.getOptionValues("sh")[0])
+        }
         else -> HelpFormatter().printHelp("adb", options)
     }
 }
+
+fun noDeviceSet(settings: Settings): Boolean = settings.serial.isNullOrEmpty()
