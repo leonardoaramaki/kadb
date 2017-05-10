@@ -1,4 +1,4 @@
-package peek
+package kadb
 
 const val VERSION_SERVICE = "host:version"
 

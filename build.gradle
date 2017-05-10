@@ -19,7 +19,7 @@ repositories {
     mavenCentral()
 }
 
-mainClassName = 'peek.MainKt'
+mainClassName = 'kadb.MainKt'
 
 sourceSets {
     main {
@@ -44,7 +44,7 @@ task fatJar(type: Jar, dependsOn: compileKotlin) {
     manifest {
         attributes 'Implementation-Title': 'Gradle Jar File Example',
                 'Implementation-Version': version,
-                'Main-Class': 'peek.MainKt'
+                'Main-Class': 'kadb.MainKt'
     }
     baseName = project.name + '-all'
     from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
@@ -59,7 +59,7 @@ task launch(type: Exec, dependsOn: fatJar) {
     commandLine "java", "-jar", "${project.name}-all-${version}.jar", parameters
 }
 
-mainClassName = "peek.MainKt"
+mainClassName = "kadb.MainKt"
 
 dependencies {
     compile "org.jetbrains.kotlin:kotlin-stdlib-jre8:$kotlin_version"

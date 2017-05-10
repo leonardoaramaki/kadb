@@ -1,4 +1,4 @@
-package peek
+package kadb
 
 import org.apache.commons.cli.*
 

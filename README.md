@@ -1,4 +1,4 @@
-PEEK
+kadb
 ====
 
 An adb client written 100% in [Kotlin][1] that runs on terminal. Remembering that it's still 
@@ -11,24 +11,69 @@ What it does
 
  * List all attached devices.
  * Run shell commands directly on device or emulator.
+ * Pull files from device/emulator.
+ * Can run from the command line using the jar/gradle.
  
 Future support intended
 ------------------------
 
  * Push files from host.
- * Pull files from device/emulator.
- * Wrap everything up as an utility by its own.
  
 For the moment, in order to run this project you need to clone and build it first. The project 
 uses gradle as its build system so it should be simple enough.
 
-Also notice that by saying "run" I mean it will execute the sample that comes with it since 
-it's not a library nor an utility __yet__.
+The project can now generate a jar file which you can use it as a cli utility, just like adb.
 
-That being said, run the sample with
+In order to run the sample
 
 ```
-./gradlew run
+./gradlew launch -q
+```
+
+This should show the usage screen.
+
+To list all the devices using gradle
+
+```
+./gradlew launch -q -Pparams=--devices
+```
+
+Okay, that's ugly as hell. Just find the generated jar sitting on the build/libs/ folder and you're 
+good to go
+
+```
+java -jar build/libs/kadb-all-0.1.0.jar --devices
+```
+
+The jar is not there?
+
+```
+./gradlew fatJar
+```
+
+Example usage
+-------------
+
+Listing all files from device
+
+```
+java -jar build/libs/kadb-all-0.1.0.jar --devices
+```
+
+Listing files on device
+
+```
+java -jar build/libs/kadb-all-0.1.0.jar -s emulator-5554 -sh 'ls -la /sdcard/'
+```
+
+Pull a remote file
+```
+java -jar build/libs/kadb-all-0.1.0.jar -s emulator-5554 --pull /sdcard/some_picture.png
+
+# OR
+
+java -jar build/libs/kadb-all-0.1.0.jar -s emulator-5554 --pull /sdcard/some_picture.png ~/Pictures/
+
 ```
 
 License

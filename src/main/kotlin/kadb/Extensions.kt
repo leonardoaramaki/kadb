@@ -1,4 +1,4 @@
-package peek
+package kadb
 
 fun String.hasPayload(): Boolean {
     return this.length > 4

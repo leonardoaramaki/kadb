@@ -1,4 +1,4 @@
-package peek
+package kadb
 
 class Settings {
     inline val Set: Settings
