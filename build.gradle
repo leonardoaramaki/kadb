@@ -24,12 +24,12 @@ mainClassName = 'kadb.MainKt'
 sourceSets {
     main {
         java {
-            srcDirs += "kotlin"
+            srcDirs += "src/kotlin"
         }
     }
     test {
         java {
-            srcDirs += "test"
+            srcDirs += "src/test"
         }
     }
 }
