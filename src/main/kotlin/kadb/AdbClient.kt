@@ -100,7 +100,7 @@ class AdbClient(private var config: Settings = settings { Set loggingTo false ve
                             val chunkSize = ByteArray(WORD_SIZE)
                             client.inputStream.read(chunkSize, 0, 4)
 
-                            var chunkBytesLength = littleToBigEndian(unsignWord(chunkSize))
+                            var chunkBytesLength = unsignWord(chunkSize).toBigEndian()
                             var chunkData = ByteArray(chunkBytesLength)
                             var chunkBytesRead = client.inputStream.read(chunkData, 0, chunkBytesLength)
                             stdOut("Read $chunkBytesRead out of $chunkBytesLength")
@@ -121,7 +121,7 @@ class AdbClient(private var config: Settings = settings { Set loggingTo false ve
                                     "DATA" -> {
                                         // read another 4 hex to get the next chunk length
                                         client.inputStream.read(chunkSize, 0, 4)
-                                        chunkBytesLength = littleToBigEndian(unsignWord(chunkSize))
+                                        chunkBytesLength = unsignWord(chunkSize).toBigEndian()
                                         chunkData = ByteArray(chunkBytesLength)
                                         chunkBytesRead = client.inputStream.read(chunkData, 0, chunkBytesLength)
                                     }
@@ -224,23 +224,12 @@ class AdbClient(private var config: Settings = settings { Set loggingTo false ve
         return cmd.substring(0, 4)
     }
 
-    private fun integerToFourByteHexString(value: Int): String {
-        return value.toString(16).padStart(2, '0').padEnd(8, '0')
-    }
-
     private fun fourByteHexStringToAscii(fourByteHexStr: String): String {
         return String(DatatypeConverter.parseHexBinary(fourByteHexStr))
     }
 
     private fun encodedLengthForSync(len: Int): String {
-        return fourByteHexStringToAscii(integerToFourByteHexString(len))
-    }
-
-    // Change byte order from little-endian to big-endian for 16 bit ints
-    private fun littleToBigEndian(littleEndian: Int): Int {
-        var bigEndian: Int = (littleEndian and 0xff_00) shr 8
-        bigEndian = bigEndian or (littleEndian and 0x00_ff shl 8)
-        return bigEndian
+        return fourByteHexStringToAscii(len.toFourByteHexString())
     }
 
     private fun prefixLengthHexToPayload(payload: String): String {
