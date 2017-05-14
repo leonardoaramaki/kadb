@@ -10,7 +10,7 @@ What it does
 -------------
 
  * List all attached devices.
- * Run shell commands directly on device or emulator.
+ * Run shell commands directly on device or emulator (no interactive shell **yet**).
  * Pull files from device/emulator.
  * Push files from host.
  * Can run from the command line using the jar/gradle.
@@ -62,7 +62,7 @@ Listing files on device
 java -jar build/libs/kadb-all-0.1.0.jar -s emulator-5554 -sh 'ls -la /sdcard/'
 ```
 
-Pull a remote file
+Pull a remote file from device
 ```
 java -jar build/libs/kadb-all-0.1.0.jar -s emulator-5554 --pull /sdcard/some_picture.png
 
@@ -72,7 +72,16 @@ java -jar build/libs/kadb-all-0.1.0.jar -s emulator-5554 --pull /sdcard/some_pic
 
 ```
 
-License
+Push a local file to device
+```
+java -jar build/libs/kadb-all-0.1.0.jar -s emulator-5554 --push my_song.ogg /sdcard/
+
+```
+
+Note that you may omit the -s argument if a single device is connected to the host when
+therefore kadb shall automatically switch to that device.
+
+LICENSE
 -------
 
     Copyright 2017 Leonardo Aramaki
