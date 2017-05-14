@@ -1,26 +1,21 @@
 package kadb
 
-import java.io.BufferedReader
-import java.io.IOException
-import java.io.InputStreamReader
-import java.io.PrintStream
+import java.io.*
 import java.net.Socket
 import java.nio.file.Files
 import java.nio.file.Paths
-import java.nio.file.StandardOpenOption
-import javax.xml.bind.DatatypeConverter
 
 class AdbClient(private var config: Settings = settings { Set loggingTo false verboseTo false },
                 private var serial: String? = config.serial,
-                private var fileSyncMode: Boolean = false,
+                private var syncMode: Boolean = false,
                 private var writer: PrintStream? = null,
                 private var reader: BufferedReader? = null,
-                private var devicesFound: MutableList<String> = mutableListOf(),
+                private var devicesFound: MutableSet<String> = mutableSetOf(),
                 private var syncLocalFilePath: String = "",
                 private var syncRemoteFilePath: String = "") {
 
     companion object {
-        const val CHUNK_MAX_SIZE_PER_SYNC = 65535 // 64K - max chunk size in bytes transferred on a sync message payload
+        const val MAX_SIZE_PER_SYNC = 1024 * 64   // 64K - max chunk size in bytes transferred on a sync message payload
         const val ADB_HOST = "localhost" // adb server running on host machine
         const val ADB_PORT = 5037 // adb default port
         const val OKAY = "OKAY" // default response id when a service request succeeded
@@ -68,22 +63,23 @@ class AdbClient(private var config: Settings = settings { Set loggingTo false ve
             var fileNotFound = false
             for (cmd in commands) {
                 var output: String = ""
-                if (fileSyncMode) {
+                if (syncMode) {
                     if (fileNotFound) {
                         stdOut("adb: error: remote object '$syncRemoteFilePath' does not exist")
                         break
                     }
-                    client.getOutputStream().write(cmd.payload().toByteArray())
+                    client.outputStream.write(cmd.payload().toByteArray())
                 } else {
-                    client.getOutputStream().write(cmd.toByteArray())
+                    client.outputStream.write(cmd.toByteArray())
                 }
-                client.getOutputStream().flush()
-                log("-> ${if (config.verbose) if (fileSyncMode) cmd.payload() else cmd else cmd.payload()}")
-                if (fileSyncMode) {
-                    when (getCommandId(cmd.payload())) {
+                client.outputStream.flush()
+                log("-> ${if (config.verbose) if (syncMode) cmd.payload() else cmd else cmd.payload()}")
+                if (syncMode) {
+                    when (getSyncId(cmd.payload())) {
                         "STAT" -> {
                             val chunkSize = ByteArray(WORD_SIZE)
                             client.inputStream.read(chunkSize, 0, 4)
+                            log("<- ${String(chunkSize)}")
                             val available = client.inputStream.available()
                             val ZEROES = ByteArray(available)
                             val BUFFER = ByteArray(available)
@@ -91,55 +87,80 @@ class AdbClient(private var config: Settings = settings { Set loggingTo false ve
                             // adb server returns all zeroes for STAT if file not found remotely
                             fileNotFound = String(BUFFER) == String(ZEROES)
                         }
-                        "RECV" -> {
-                            val path = Paths.get(syncLocalFilePath)
-                            val responseId = ByteArray(WORD_SIZE)
-                            client.inputStream.read(responseId, 0, 4)
-                            log("<- ${String(responseId)}")
+                        "SEND" -> {
+                            val file = Paths.get(syncLocalFilePath)
+                            val fileInputStream = Files.newInputStream(file)
+                            val buffer = ByteArray(MAX_SIZE_PER_SYNC)
+                            var bytesRead = fileInputStream.read(buffer, 0, MAX_SIZE_PER_SYNC)
+                            var offset = bytesRead
 
-                            val chunkSize = ByteArray(WORD_SIZE)
-                            client.inputStream.read(chunkSize, 0, 4)
-
-                            var chunkBytesLength = unsignWord(chunkSize).toBigEndian()
-                            var chunkData = ByteArray(chunkBytesLength)
-                            var chunkBytesRead = client.inputStream.read(chunkData, 0, chunkBytesLength)
-                            stdOut("Read $chunkBytesRead out of $chunkBytesLength")
-                            var totalFileBytesRead = chunkBytesRead
-
-                            Files.write(path, chunkData, StandardOpenOption.TRUNCATE_EXISTING,
-                                    StandardOpenOption.CREATE)
-
-                            var keepPulling = true
-                            while (keepPulling) {
-                                //region check if 4 hex is 'DATA'
-                                if (client.inputStream.available() < 4) {
-                                    keepPulling = false
-                                }
-                                client.inputStream.read(chunkSize, 0, 4)
-                                val hex = String(chunkSize)
-                                when (hex) {
-                                    "DATA" -> {
-                                        // read another 4 hex to get the next chunk length
-                                        client.inputStream.read(chunkSize, 0, 4)
-                                        chunkBytesLength = unsignWord(chunkSize).toBigEndian()
-                                        chunkData = ByteArray(chunkBytesLength)
-                                        chunkBytesRead = client.inputStream.read(chunkData, 0, chunkBytesLength)
-                                    }
-                                    "DONE" -> keepPulling = false
-                                    else -> {
-                                        chunkData = ByteArray(chunkBytesLength - 4)
-                                        chunkBytesRead = client.inputStream.read(chunkData, 0, chunkBytesLength - 4)
-                                        Files.write(path, chunkSize, StandardOpenOption.APPEND)
+                            while (bytesRead > 0) {
+                                client.outputStream.write("DATA".toByteArray())
+                                val syncLen = bytesRead.toLittleEndian().toString(16).padStart(8, '0')
+                                syncLen.forEachIndexed { index, value ->
+                                    if (index % 2 == 0) {
+                                        val hex = value.toString() + syncLen[index + 1]
+                                        client.outputStream.write(hex.toInt(16))
                                     }
                                 }
-                                //endregion
-                                if (keepPulling) {
-                                    totalFileBytesRead += chunkBytesRead
-                                    Files.write(path, chunkData, StandardOpenOption.APPEND)
-                                }
+                                client.outputStream.write(buffer, 0, bytesRead)
+
+                                bytesRead = fileInputStream.read(buffer, 0, MAX_SIZE_PER_SYNC)
+                                offset += if (bytesRead > -1) bytesRead else 0
                             }
 
-                            stdOut("$syncRemoteFilePath: 1 file pulled. ($totalFileBytesRead bytes)")
+                            val lastModifiedTimeInMillis = Files.getLastModifiedTime(file).toInstant().nano
+                            client.outputStream.write("DONE${lastModifiedTimeInMillis.toLengthForSync()}".toByteArray())
+                            log("-> DONE${lastModifiedTimeInMillis.toLengthForSync()}")
+                            stdOut("${file.fileName}: 1 file pushed. (${offset} bytes)")
+                        }
+                        "RECV" -> {
+                            val syncIdArray = ByteArray(WORD_SIZE)
+                            val chunkSizeArray = ByteArray(WORD_SIZE)
+                            val outputFile = File(syncLocalFilePath)
+                            if (outputFile.exists()) {
+                                outputFile.delete()
+                            }
+                            outputFile.createNewFile()
+                            val outputStream = FileOutputStream(outputFile)
+                            var totalBytes = 0
+                            var bytesLength = 0
+                            var keepPulling = true
+
+                            val ds = DataInputStream(client.inputStream)
+                            while (keepPulling) {
+                                ds.readFully(syncIdArray)
+                                val syncId = String(syncIdArray)
+                                if (syncId == "DATA") {
+                                    // read another 4 hex to get the next chunk length
+                                    ds.readFully(chunkSizeArray, 0, 4)
+                                    bytesLength = 0
+                                    chunkSizeArray.forEachIndexed { index, byte ->
+                                        if (index % 2 == 0) {
+                                            val i = byte.toInt() and 0xFF
+                                            val j = chunkSizeArray[index + 1].toInt() and 0xFF
+                                            if (index == 0)
+                                                bytesLength = bytesLength or (j.toString(16).padStart(2, '0') + i.toString(16).padStart(2, '0')).toInt(16)
+                                            else
+                                                bytesLength = bytesLength or ((j.toString(16).padStart(2, '0') + i.toString(16).padStart(2, '0')).toInt(16) shl 16)
+                                        }
+                                    }
+                                    log("Next chunk len is $bytesLength bytes")
+                                    val data = ByteArray(bytesLength)
+                                    ds.readFully(data)
+
+                                    totalBytes += bytesLength
+                                    outputStream.write(data, 0, bytesLength)
+                                    outputStream.flush()
+
+                                } else if (syncId == "DONE") {
+                                    log("<- DONE")
+                                    keepPulling = false
+                                    outputStream.flush()
+                                    outputStream.close()
+                                    stdOut("$syncRemoteFilePath: 1 file pulled. ($totalBytes bytes)")
+                                }
+                            }
                         }
                     }
                 } else {
@@ -160,7 +181,7 @@ class AdbClient(private var config: Settings = settings { Set loggingTo false ve
                                     }
                                 }
                                 cmd.payload() == VERSION_SERVICE -> log("<- ${reader?.readLine()}")
-                                cmd.payload() == SYNC_SERVICE -> fileSyncMode = true
+                                cmd.payload() == SYNC_SERVICE -> syncMode = true
                                 cmd.payload().startsWith(SHELL_SERVICE) -> {
                                     var line = reader?.readLine()
                                     while (line != null) {
@@ -183,28 +204,11 @@ class AdbClient(private var config: Settings = settings { Set loggingTo false ve
             e.printStackTrace()
         } finally {
             log("Closing connection...")
-            devicesFound.clear()
-            fileSyncMode = false
+            syncMode = false
             writer?.close()
             reader?.close()
             client.close()
         }
-    }
-
-    private fun unsignWord(dataSize: ByteArray): Int {
-        var length = ""
-        String(dataSize).forEach {
-            val elem = it.toShort()
-            var tmp = elem
-            if (elem < 0) {
-                tmp = elem
-            }
-            val hex = it.toInt().toString(16)
-            if (length.length < 4) {
-                length += hex
-            }
-        }
-        return length.toInt(16)
     }
 
     @Throws(IOException::class)
@@ -220,16 +224,8 @@ class AdbClient(private var config: Settings = settings { Set loggingTo false ve
         return String(word)
     }
 
-    private fun getCommandId(cmd: String): String {
+    private fun getSyncId(cmd: String): String {
         return cmd.substring(0, 4)
-    }
-
-    private fun fourByteHexStringToAscii(fourByteHexStr: String): String {
-        return String(DatatypeConverter.parseHexBinary(fourByteHexStr))
-    }
-
-    private fun encodedLengthForSync(len: Int): String {
-        return fourByteHexStringToAscii(len.toFourByteHexString())
     }
 
     private fun prefixLengthHexToPayload(payload: String): String {
@@ -238,7 +234,9 @@ class AdbClient(private var config: Settings = settings { Set loggingTo false ve
 
     private fun switchToDevice(deviceSerial: String?) {
         send(DEVICES_SERVICE, silent = true)
-        serial = deviceSerial ?: if (devicesFound.size > 0) devicesFound[0].split(Regex("\\s"))[0] else config.serial
+        // device serial switch preferred order:
+        // serial at argument or else serial set at config or else first serial gotten from a devices check
+        serial = deviceSerial ?: if (config.serial.isNullOrEmpty()) devicesFound.first().split(Regex("\\s"))[0] else config.serial
     }
 
     private fun stdOut(message: Any?) {
@@ -259,8 +257,26 @@ class AdbClient(private var config: Settings = settings { Set loggingTo false ve
                 VERSION_SERVICE,
                 "$TRANSPORT_SERVICE$serial",
                 SYNC_SERVICE,
-                "STAT${encodedLengthForSync(remoteFilePath.length)}$remoteFilePath",
-                "RECV${encodedLengthForSync(remoteFilePath.length)}$remoteFilePath"
+                "STAT${remoteFilePath.length.toLengthForSync().toAscii()}$remoteFilePath",
+                "RECV${remoteFilePath.length.toLengthForSync().toAscii()}$remoteFilePath"
+        )
+    }
+
+    fun push(localFilePath: String, remoteFilePath: String, deviceSerial: String? = null) {
+        if (!Files.exists(Paths.get(localFilePath))) {
+            stdOut("adb: error: cannot stat '$localFilePath': No such file or directory")
+            return
+        }
+        syncLocalFilePath = localFilePath
+        syncRemoteFilePath = remoteFilePath + Paths.get(localFilePath).fileName
+        switchToDevice(deviceSerial)
+        val sendPayload = "$syncRemoteFilePath,33204"
+        batchAndRun(
+                VERSION_SERVICE,
+                TRANSPORT_SERVICE + serial,
+                SYNC_SERVICE,
+                "STAT${remoteFilePath.length.toLengthForSync().toAscii()}$remoteFilePath",
+                "SEND${sendPayload.length.toLengthForSync().toAscii()}$sendPayload"
         )
     }
 
