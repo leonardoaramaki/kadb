@@ -12,12 +12,8 @@ What it does
  * List all attached devices.
  * Run shell commands directly on device or emulator.
  * Pull files from device/emulator.
- * Can run from the command line using the jar/gradle.
- 
-Future support intended
-------------------------
-
  * Push files from host.
+ * Can run from the command line using the jar/gradle.
  
 For the moment, in order to run this project you need to clone and build it first. The project 
 uses gradle as its build system so it should be simple enough.
