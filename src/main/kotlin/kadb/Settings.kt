@@ -7,7 +7,7 @@ class Settings {
     internal var verbose: Boolean = false
     internal var serial: String? = null
 
-    infix fun device(serial: String): Settings {
+    infix fun device(serial: String?): Settings {
         this.serial = serial
         return this
     }
