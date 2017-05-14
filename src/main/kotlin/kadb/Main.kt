@@ -13,12 +13,22 @@ fun main(args: Array<String>) {
             .desc("use device with given serial number")
             .build())
 
-    options.addOption(Option.builder("p")
+    options.addOption(Option.builder()
+            .longOpt("push")
+            .numberOfArgs(2)
+            .hasArg()
+            .argName("LOCAL")
+            .argName("REMOTE")
+            .desc("copy local files/directories to device")
+            .hasArgs()
+            .build())
+
+    options.addOption(Option.builder()
             .longOpt("pull")
             .numberOfArgs(2)
             .argName("REMOTE")
             .argName("LOCAL")
-            .desc("copy files/firs from device")
+            .desc("copy files/dirs from device")
             .hasArgs()
             .build())
 
@@ -30,31 +40,24 @@ fun main(args: Array<String>) {
             .build())
 
     val cmd = DefaultParser().parse(options, args)
-
-    val serial = if (cmd.hasOption("s") && cmd.getOptionValues("s").isNotEmpty()) cmd.getOptionValues("s")[0] else ""
-
-    val settings = settings {
-        Set device serial verboseTo false loggingTo false
-    }
-
-    val adbCli = AdbClient(settings)
-
+    val serial = if (cmd.hasOption("s") && cmd.getOptionValues("s").isNotEmpty()) cmd.getOptionValues("s")[0] else null
+    val adbCli = AdbClient(settings { Set device serial })
     when {
         cmd.hasOption("d") || cmd.hasOption("devices") -> adbCli.devices()
-        cmd.hasOption("p") -> {
-            if (noDeviceSet(settings)) {
-                println("No device set")
+        cmd.hasOption("push") -> {
+            if (cmd.getOptionValues("push").isEmpty()) {
+                showUsage(options)
                 return
             }
-            if (cmd.getOptionValues("p").size > 1) {
-                adbCli.pull(cmd.getOptionValues("p")[0], cmd.getOptionValues("p")[1])
+            if (cmd.getOptionValues("push").size > 1) {
+                adbCli.push(cmd.getOptionValues("push")[0], cmd.getOptionValues("push")[1])
             } else {
-                adbCli.pull(cmd.getOptionValues("p")[0])
+                showUsage(options)
             }
         }
         cmd.hasOption("pull") -> {
-            if (noDeviceSet(settings)) {
-                println("No device set")
+            if (cmd.getOptionValues("pull").isEmpty()) {
+                showUsage(options)
                 return
             }
             if (cmd.getOptionValues("pull").size > 1) {
@@ -64,14 +67,12 @@ fun main(args: Array<String>) {
             }
         }
         (cmd.hasOption("sh") || cmd.hasOption("shell") && cmd.getOptionValues("sh").isNotEmpty()) -> {
-            if (noDeviceSet(settings)) {
-                println("No device set")
-                return
-            }
             adbCli.shell(cmd.getOptionValues("sh")[0])
         }
-        else -> HelpFormatter().printHelp("adb", options)
+        else -> showUsage(options)
     }
 }
 
-fun noDeviceSet(settings: Settings): Boolean = settings.serial.isNullOrEmpty()
+fun showUsage(options: Options) {
+    HelpFormatter().printHelp(1024, "adb", "----------", options, null)
+}
