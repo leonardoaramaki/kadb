@@ -4,7 +4,7 @@ class Settings {
     inline val Set: Settings
         get() = this
     internal var logging: Boolean = false
-    internal var verbose: Boolean = false
+    internal var verbose: Boolean = true
     internal var serial: String? = null
 
     infix fun device(serial: String?): Settings {
@@ -20,6 +20,12 @@ class Settings {
     infix fun verboseTo(verbose: Boolean): Settings {
         this.verbose = verbose
         return this
+    }
+
+    fun quiet(block: () -> Unit) {
+        this.verbose = false
+        block()
+        this.verbose = true
     }
 }
 

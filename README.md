@@ -10,17 +10,17 @@ What it does
 -------------
 
  * List all attached devices.
- * Run shell commands directly on device or emulator.
+ * Run shell commands directly on device or emulator (no interactive shell **yet**).
  * Pull files from device/emulator.
  * Push files from host.
- * Can run from the command line using the jar/gradle.
+ * Can queryAdb from the command line using the jar/gradle.
  
-For the moment, in order to run this project you need to clone and build it first. The project 
+For the moment, in order to queryAdb this project you need to clone and build it first. The project 
 uses gradle as its build system so it should be simple enough.
 
 The project can now generate a jar file which you can use it as a cli utility, just like adb.
 
-In order to run the sample
+In order to queryAdb the sample
 
 ```
 ./gradlew launch -q
@@ -50,19 +50,19 @@ The jar is not there?
 Example usage
 -------------
 
-Listing all files from device
+Listing all connected devices
 
 ```
 java -jar build/libs/kadb-all-0.1.0.jar --devices
 ```
 
-Listing files on device
+Listing files on device's /sdcard/ folder
 
 ```
 java -jar build/libs/kadb-all-0.1.0.jar -s emulator-5554 -sh 'ls -la /sdcard/'
 ```
 
-Pull a remote file
+Pull a remote file from device
 ```
 java -jar build/libs/kadb-all-0.1.0.jar -s emulator-5554 --pull /sdcard/some_picture.png
 
@@ -72,7 +72,16 @@ java -jar build/libs/kadb-all-0.1.0.jar -s emulator-5554 --pull /sdcard/some_pic
 
 ```
 
-License
+Push a local file to device
+```
+java -jar build/libs/kadb-all-0.1.0.jar --push my_song.ogg /sdcard/
+
+```
+
+Note that you may omit the -s argument if a single device is connected to the host when
+therefore kadb shall automatically switch to that device.
+
+LICENSE
 -------
 
     Copyright 2017 Leonardo Aramaki
