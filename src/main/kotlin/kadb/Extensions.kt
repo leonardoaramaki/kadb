@@ -1,20 +1,5 @@
 package kadb
 
-import javax.xml.bind.DatatypeConverter
-
-fun String.hasPayload(): Boolean {
-    return this.length > 4
-}
-
-fun String.prefix(): String {
-    return if (this.length < 4) "" else this.substring(0, 4)
-}
-
-fun String.payload(): String {
-    return if (this.hasPayload()) this.substring(4, this.length) else this
-}
-
-//fun String.toAscii() = String(DatatypeConverter.parseHexBinary(this))
 fun String.toAscii(): String {
     val output = StringBuilder()
     for (i in 0 until this.length step 2) {
@@ -25,7 +10,9 @@ fun String.toAscii(): String {
     return output.toString()
 }
 
-// Change byte order from little-endian to big-endian for 16 bit ints
+fun String.lengthInHex(): String = this.length.toString(16).padStart(4, '0')
+
+// Change byte order from little-endian to big-endian for ints
 fun Int.toLittleEndian(): Long {
     val bigEndian = this.toLong()
     var littleEndian: Long = (bigEndian and 0x00_00_00_ff shl 24)
@@ -35,8 +22,9 @@ fun Int.toLittleEndian(): Long {
     return littleEndian
 }
 
-fun Int.toFourByteHexString() = this.toString(16).padStart(2, '0').padEnd(8, '0')
-
-fun Int.toLengthForSync(): String {
+/**
+ * Reorder int to little-endian, convert it to its hex request representation ensuring it has exactly length 8.
+ */
+fun Int.toLittleEndianString(): String {
     return this.toLittleEndian().toString(16).padStart(8, '0')
 }
