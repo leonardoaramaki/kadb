@@ -11,8 +11,8 @@ What it does
 
  * List all attached devices.
  * Run shell commands directly on device (no interactive shell **yet**).
- * Pull files from device.
- * Push files to device.
+ * Pull file from device.
+ * Push file to device.
  * Executes from the terminal using the jar/gradle.
  
 For the moment, in order to run this project you need to clone and build it first. The project 
@@ -20,7 +20,7 @@ uses gradle as its build system so it should be simple enough.
 
 The project can now generate a jar file which you can use it as a cli utility, just like adb.
 
-In order to run it without paremeters using gradle
+In order to execute it with gradle
 
 ```
 ./gradlew launch -q
