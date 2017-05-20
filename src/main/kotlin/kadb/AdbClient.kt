@@ -217,14 +217,15 @@ class AdbClient(private var config: Settings = settings { Set loggingTo false ve
         val dis = DataInputStream(inputStream)
         dis.readSync(hex4)
         if (hex4.string == "FAIL") {
-            if (message.isNullOrEmpty()) {
+            if (message == null || message.isEmpty()) {
                 dis.readSync(hex4)
                 val len = hex4.string.toInt(16)
                 val error = ByteArray(len)
                 dis.readSync(error)
                 error(error.string)
+            } else {
+                error(message)
             }
-            error(message!!)
         }
         return "OKAY"
     }
