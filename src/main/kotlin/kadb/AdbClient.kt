@@ -38,26 +38,26 @@ class AdbClient(private var config: Settings = settings { Set loggingTo false ve
                 runShell(command, socket)
             }
             "host:devices" -> {
-                socket.use {
-                    socket.outputStream.write(command.request())
-                    assertStatus(socket.inputStream)
+                socket.use { sock ->
+                    sock.outputStream.write(command.request())
+                    assertStatus(sock.inputStream)
                     val hex4 = ByteArray(4)
-                    val dis = DataInputStream(socket.inputStream)
+                    val dis = DataInputStream(sock.inputStream)
                     while (dis.available() > 0) {
                         dis.readSync(hex4)
-                        val len = String(hex4).toInt(16)
+                        val len = hex4.string.toInt(16)
                         val deviceLine = ByteArray(len)
                         dis.readSync(deviceLine)
-                        devicesConnected.add(String(deviceLine).split('\t')[0])
-                        display("${String(deviceLine)}\n")
+                        devicesConnected.add(deviceLine.string.split('\t')[0])
+                        display("${deviceLine.string}\n")
                     }
                 }
             }
             "host:version" -> {
-                socket.use {
-                    socket.outputStream.write(command.request())
-                    assertStatus(socket.inputStream)
-                    DataInputStream(socket.inputStream).readline()
+                socket.use { sock ->
+                    sock.outputStream.write(command.request())
+                    assertStatus(sock.inputStream)
+                    DataInputStream(sock.inputStream).readline()
                 }
             }
             else -> {
@@ -73,15 +73,15 @@ class AdbClient(private var config: Settings = settings { Set loggingTo false ve
     }
 
     private fun runSync(sync: Command, socket: Socket) {
-        socket.use {
+        socket.use { sock ->
             val hex4 = ByteArray(4)
             // Start sync
-            val dis = DataInputStream(socket.inputStream)
-            val dos = DataOutputStream(socket.outputStream)
+            val dis = DataInputStream(sock.inputStream)
+            val dos = DataOutputStream(sock.outputStream)
 
             dos.write(sync.request())
 
-            assertStatus(socket.inputStream)
+            assertStatus(sock.inputStream)
             val subCommands = sync.subCommands ?: error("sync: with no subcommands")
             val statResult = stat(subCommands[0])
             when (subCommands[1].id) {
@@ -108,7 +108,7 @@ class AdbClient(private var config: Settings = settings { Set loggingTo false ve
                                 dos.write(hex.toInt(16))
                             }
                         }
-                        dos.write(String(buffer), 0, bytesRead)
+                        dos.write(buffer.string, 0, bytesRead)
 
                         available = fis.available()
                         bytesRead = if (available > MAX_SIZE_PER_SYNC) MAX_SIZE_PER_SYNC else available
@@ -119,12 +119,12 @@ class AdbClient(private var config: Settings = settings { Set loggingTo false ve
                     val lastModifiedTimeInMillis = File(localFilePath).lastModified().toInt().toLittleEndianString().toAscii()
                     dos.write("DONE$lastModifiedTimeInMillis")
                     dis.readSync(hex4)
-                    if (String(hex4) == "FAIL") {
+                    if (hex4.string == "FAIL") {
                         dis.readSync(hex4)
                         val errorMsgLen = hex4[0].toInt()
                         val errorMsg = ByteArray(errorMsgLen)
                         dis.readSync(errorMsg)
-                        error("adb: error: failed to copy '${localFile.name}' to '${remoteFilePath}': remote ${String(errorMsg)}")
+                        error("adb: error: failed to copy '${localFile.name}' to '${remoteFilePath}': remote ${errorMsg.string}")
                     }
                     display("${localFile.name}: 1 file pushed. (${offset} bytes)")
                 }
@@ -143,7 +143,7 @@ class AdbClient(private var config: Settings = settings { Set loggingTo false ve
 
                     while (pull) {
                         dis.readSync(hex4)
-                        if (String(hex4) == "DATA") {
+                        if (hex4.string == "DATA") {
                             // read another 4 hex to get the next chunk length
                             dis.readSync(chunkSizeArray, 0, 4)
                             var bytesLength = 0
@@ -163,7 +163,7 @@ class AdbClient(private var config: Settings = settings { Set loggingTo false ve
                             totalBytes += bytesLength
                             fos.write(data, 0, bytesLength)
                             fos.flush()
-                        } else if (String(hex4) == "DONE") {
+                        } else if (hex4.string == "DONE") {
                             fos.flush()
                             pull = false
                             display("$remoteFilePath: 1 file pulled. ($totalBytes bytes)")
@@ -171,7 +171,7 @@ class AdbClient(private var config: Settings = settings { Set loggingTo false ve
                     }
                 }
             }
-            quit(socket.outputStream)
+            quit(sock.outputStream)
         }
     }
 
@@ -200,7 +200,7 @@ class AdbClient(private var config: Settings = settings { Set loggingTo false ve
             val dos = DataOutputStream(sock.outputStream)
             dos.write(command.request())
             dis.readSync(hex4)
-            if (String(hex4) == "OKAY") {
+            if (hex4.string == "OKAY") {
                 var line = dis.readline()
                 while (line != null) {
                     display("$line\n")
@@ -216,13 +216,13 @@ class AdbClient(private var config: Settings = settings { Set loggingTo false ve
         val hex4 = ByteArray(4)
         val dis = DataInputStream(inputStream)
         dis.readSync(hex4)
-        if (String(hex4) == "FAIL") {
+        if (hex4.string == "FAIL") {
             if (message.isNullOrEmpty()) {
                 dis.readSync(hex4)
-                val len = String(hex4).toInt(16)
+                val len = hex4.string.toInt(16)
                 val error = ByteArray(len)
                 dis.readSync(error)
-                error(String(error))
+                error(error.string)
             }
             error(message!!)
         }
@@ -275,12 +275,12 @@ class AdbClient(private var config: Settings = settings { Set loggingTo false ve
 
     fun DataInputStream.readSync(b: ByteArray, off: Int, len: Int) {
         this.readFully(b, off, len)
-        log("<- ${String(b)}")
+        log("<- ${b.string}")
     }
 
     fun DataInputStream.readSync(b: ByteArray) {
         this.readFully(b)
-        log("<- ${String(b)}")
+        log("<- ${b.string}")
     }
 
     fun DataInputStream.readline(): String? {

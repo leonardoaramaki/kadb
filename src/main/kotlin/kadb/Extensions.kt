@@ -28,3 +28,6 @@ fun Int.toLittleEndian(): Long {
 fun Int.toLittleEndianString(): String {
     return this.toLittleEndian().toString(16).padStart(8, '0')
 }
+
+val ByteArray.string: String
+    get() = String(this)
